@@ -11,7 +11,7 @@ Disclaimer: I used Claude to help draft this, but it's not slop I promise :)
 
 ---
 
-## 0. Tools needed
+## X. Tools needed
 
 | Tool | What for | Install |
 |------|----------|---------|
