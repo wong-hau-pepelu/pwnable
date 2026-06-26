@@ -3,9 +3,11 @@
 A reference for the **bof** challenge on <https://pwnable.kr/play.php>. This is a
 classic stack buffer overflow where the goal is not to smash the return address,
 but to **overwrite a function argument** so a comparison passes and spawns a shell.
-I learned and practiced with this following wetw0rk's tutorial video (huge thanks).
+I learned and practiced with this following wetw0rk's tutorial video (huge thanks to him!).
+
 https://www.youtube.com/watch?v=A-P2bhxzK1Y
-I am using Claude also to draft, but it's not slope I promise :) 
+
+Disclaimer: I am using Claude also to draft, but it's not slope I promise :) 
 
 ---
 
